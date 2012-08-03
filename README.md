@@ -21,11 +21,11 @@ hypoDDpy is currently working with HypoDD 2.1b which you have to acquire from Fe
 
 Put the archive in the following subdirectory:
 ```
-hypoddpy/src/HYPODD\_2.1b.tar.gz
+hypoddpy/src/HYPODD_2.1b.tar.gz
 ```
-The src directory will likely not exists.
+The src directory will likely not exist.
 
-Then run *either of the* following two commands, depending on which Python module installer you prefer.
+Then run *either of the* following two commands, depending on which Python module installer you prefer:
 ```
 pip install -v -e .
 python setup.py develop
@@ -36,7 +36,7 @@ The inplace install is a good idea because there is a chance that you will have 
 
 ### Running it
 
-It is steered via a Python script that you will have to create. It should be rather self explanatory.
+It is steered via a Python script that you will have to create. It should be rather self-explanatory.
 
 After you created it, simply run it to perform the relocation.
 
