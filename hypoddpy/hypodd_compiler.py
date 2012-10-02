@@ -98,15 +98,15 @@ class HypoDDCompiler(object):
         self.paths["hypodd_unpack_dir"] = os.path.join(self.working_dir,
             "hypodd_src")
         # Some paths in the unpacked archive.
-        self.paths["make_directory"] = os.path.join(\
+        self.paths["make_directory"] = os.path.join(
             self.paths["hypodd_unpack_dir"], "HYPODD", "src")
         # The resulting binaries directly after the compilation.
-        self.paths["compiled_hypodd_binary"] = os.path.join(\
+        self.paths["compiled_hypodd_binary"] = os.path.join(
             self.paths["make_directory"], "hypoDD", "hypoDD")
-        self.paths["compiled_ph2dt_binary"] = os.path.join(\
+        self.paths["compiled_ph2dt_binary"] = os.path.join(
             self.paths["make_directory"], "ph2dt", "ph2dt")
         # The include directory.
-        self.paths["include_dir"] = os.path.join(\
+        self.paths["include_dir"] = os.path.join(
             self.paths["hypodd_unpack_dir"], "HYPODD", "include")
         # The hypoDD.inc file
         self.paths["hypoDD.inc"] = os.path.join(self.paths["include_dir"],
@@ -143,7 +143,7 @@ class HypoDDCompiler(object):
             Defaults to 200.
         """
         # Set the hypodd_inc configuration.
-        self.hypodd_inc_config = { \
+        self.hypodd_inc_config = {
             "MAXEVE": MAXEVE,
             "MAXDATA": MAXDATA,
             "MAXEVE0": MAXEVE0,
@@ -226,7 +226,7 @@ class HypoDDCompiler(object):
      &          MAXDATA0 = {MAXDATA0},
      &          MAXLAY   = {MAXLAY},
      &          MAXSTA   = {MAXSTA},
-     &          MAXCL    = {MAXCL})""".format(\
+     &          MAXCL    = {MAXCL})""".format(
             MAXEVE=self.hypodd_inc_config["MAXEVE"],
             MAXDATA=self.hypodd_inc_config["MAXDATA"],
             MAXEVE0=self.hypodd_inc_config["MAXEVE0"],
