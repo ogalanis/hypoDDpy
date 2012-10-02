@@ -525,7 +525,7 @@ class HypoDDRelocator(object):
             values["MAXDIST"] = int(math.ceil(maxdist))
             self.log("MAXDIST for ph2dt.inp calculated to %i." %
                      values["MAXDIST"])
-        self.forced_configuration_values["MAXDIST"] = values["MAXDIST"]
+            self.forced_configuration_values["MAXDIST"] = values["MAXDIST"]
 
         ph2dt_inp_file = os.path.join(self.paths["input_files"], "ph2dt.inp")
         if os.path.exists(ph2dt_inp_file):
@@ -1277,11 +1277,11 @@ class HypoDDRelocator(object):
             # The first event is always the original one.
             original_latitudes.append(event.origins[0].latitude)
             original_longitudes.append(event.origins[0].longitude)
-            original_depths.append(event.origins[0].depth)
+            original_depths.append(event.origins[0].depth / 1000.0)
             # The last one can either be a relocated one or an original one.
             relocated_latitudes.append(event.origins[-1].latitude)
             relocated_longitudes.append(event.origins[-1].longitude)
-            relocated_depths.append(event.origins[-1].depth)
+            relocated_depths.append(event.origins[-1].depth / 1000.0)
             magnitudes.append(event.magnitudes[0])
             # Use color to Code the different events. Colorcode by event
             # cluster or indicate if an event did not get relocated.
@@ -1303,13 +1303,17 @@ class HypoDDRelocator(object):
         plt.subplot(221)
         plt.scatter(original_latitudes, original_depths, c=colors)
         plt.xlabel("Latitude")
-        plt.ylabel("Depth")
+        plt.ylabel("Depth in km")
+        # Invert the depth axis.
+        plt.ylim(plt.ylim()[::-1])
         plot1_xlim = plt.xlim()
         plot1_ylim = plt.ylim()
         plt.subplot(222)
         plt.scatter(original_longitudes, original_depths, c=colors)
         plt.xlabel("Longitude")
-        plt.ylabel("Depth")
+        plt.ylabel("Depth in km")
+        plt.ylim(plt.ylim()[::-1])
+        # Invert the depth axis.
         plot2_xlim = plt.xlim()
         plot2_ylim = plt.ylim()
         plt.subplot(212)
@@ -1325,13 +1329,13 @@ class HypoDDRelocator(object):
         plt.subplot(221)
         plt.scatter(relocated_latitudes, relocated_depths, c=colors)
         plt.xlabel("Latitude")
-        plt.ylabel("Depth")
+        plt.ylabel("Depth in km")
         plt.xlim(plot1_xlim)
         plt.ylim(plot1_ylim)
         plt.subplot(222)
         plt.scatter(relocated_longitudes, relocated_depths, c=colors)
         plt.xlabel("Longitude")
-        plt.ylabel("Depth")
+        plt.ylabel("Depth in km")
         plt.xlim(plot2_xlim)
         plt.ylim(plot2_ylim)
         plt.subplot(212)
