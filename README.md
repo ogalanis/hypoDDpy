@@ -73,7 +73,7 @@ relocator.add_waveform_files(glob.glob("waveform/*.mseed"))
 relocator.add_station_files(glob.glob("station/*.xml"))
 
 # Setup the velocity model. This is just a constant velocity model.
-relocator.setup_velocity_model(\
+relocator.setup_velocity_model(
     model_type="layered_p_velocity_with_constant_vp_vs_ratio",
     layer_tops=[(-10000, 5.8)],
     vp_vs_ratio=1.73)
