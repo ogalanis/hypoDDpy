@@ -334,13 +334,14 @@ class HypoDDRelocator(object):
                                   .microsecond) / 1000.0),
                                  latitude=event["origin_latitude"],
                                  longitude=event["origin_longitude"],
-                                 depth=-1.0 * event["origin_depth"],
+                                 # QuakeML depth is in meters. Convert to km.
+                                 depth=event["origin_depth"] / 1000.0,
                                  magnitude=event["magnitude"],
                                  horizontal_error=max(
                                      [event["origin_latitude_error"],
                                       event["origin_longitude_error"]]),
                                  depth_error=event[
-                                     "origin_depth_error"],
+                                     "origin_depth_error"] / 1000.0,
                                  travel_time_residual=event[
                                      "origin_time_error"],
                                  event_id=self.event_map[event["event_id"]])
@@ -509,7 +510,8 @@ class HypoDDRelocator(object):
             for event in self.events:
                 lats.append(event["origin_latitude"])
                 longs.append(event["origin_longitude"])
-                depths.append(-1.0 * event["origin_depth"])
+                # Convert to km.
+                depths.append(event["origin_depth"] / 1000.0)
             for _, station in self.stations.iteritems():
                 lats.append(station["latitude"])
                 longs.append(station["longitude"])
@@ -1154,7 +1156,8 @@ class HypoDDRelocator(object):
                 cluster_id = int(cluster_id)
                 res_id = ResourceIdentifier(event_id)
                 lat, lon, depth = map(float, [lat, lon, depth])
-                depth *= -1.0
+                # Convert back to meters.
+                depth *= 1000.0
                 event = res_id.getReferredObject()
                 # Create new origin.
                 new_origin = Origin()
