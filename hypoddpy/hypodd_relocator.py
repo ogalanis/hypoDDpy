@@ -609,7 +609,7 @@ class HypoDDRelocator(object):
         # Otherwise just run it.
         self.log("Running HypoDD...")
         hypodd_path = os.path.abspath(os.path.join(self.paths["bin"],
-                                                   "hypodd"))
+                                                   "hypoDD"))
         if not os.path.exists(hypodd_path):
             msg = "hypodd could not be found. Did the compilation succeed?"
             raise HypoDDException(msg)
@@ -867,13 +867,14 @@ class HypoDDRelocator(object):
                 # No corresponding pick could be found.
                 if pick_2 is None:
                     continue
+                station_id = pick_1["station_id"]
                 # Try to find data for both picks.
-                data_files_1 = self._find_data(pick_1["station_id"],
+                data_files_1 = self._find_data(station_id,
                                            pick_1["pick_time"] -
                                            self.cc_param["cc_time_before"],
                                            self.cc_param["cc_time_before"] +
                                            self.cc_param["cc_time_after"])
-                data_files_2 = self._find_data(pick_2["station_id"],
+                data_files_2 = self._find_data(station_id,
                                            pick_2["pick_time"] -
                                            self.cc_param["cc_time_before"],
                                            self.cc_param["cc_time_before"] +
@@ -900,21 +901,63 @@ class HypoDDRelocator(object):
                 for channel, channel_weight in pick_weight_dict.iteritems():
                     if channel_weight == 0.0:
                         continue
-                    st_1 = stream_1.select(channel="*%s" % channel)
-                    st_1.sort()
+                    # Filter the files to obtain the correct trace.
+                    network, station = station_id.split(".")
+                    st_1 = stream_1.select(network=network, station=station,
+                                           channel="*%s" % channel)
+                    st_2 = stream_2.select(network=network, station=station,
+                                           channel="*%s" % channel)
+                    max_starttime_st_1 = pick_1["pick_time"] - \
+                        self.cc_param["cc_time_before"]
+                    min_endtime_st_1 = pick_1["pick_time"] + \
+                        self.cc_param["cc_time_after"]
+                    max_starttime_st_2 = pick_2["pick_time"] - \
+                        self.cc_param["cc_time_before"]
+                    min_endtime_st_2 = pick_2["pick_time"] + \
+                        self.cc_param["cc_time_after"]
+                    # Attempt to find the correct trace.
+                    for trace in st_1:
+                        if trace.stats.starttime > max_starttime_st_1 or \
+                           trace.stats.endtime < min_endtime_st_1:
+                            st_1.remove(trace)
+                    for trace in st_2:
+                        if trace.stats.starttime > max_starttime_st_2 or \
+                           trace.stats.endtime < min_endtime_st_2:
+                            st_2.remove(trace)
+
+                    if len(st_1) > 1:
+                        msg = "More than one matching trace found for {pick}"
+                        continue
+                        self.log(msg.format(pick=str(pick_1)), level="warning")
+                    elif len(st_1) == 0:
+                        msg = "No matching trace found for {pick}"
+                        self.log(msg.format(pick=str(pick_1)), level="warning")
+                        continue
                     trace_1 = st_1[0]
-                    st_2 = stream_2.select(channel="*%s" % channel)
-                    st_2.sort()
+
+                    if len(st_2) > 1:
+                        msg = "More than one matching trace found for {pick}"
+                        continue
+                        self.log(msg.format(pick=str(pick_1)), level="warning")
+                    elif len(st_2) == 0:
+                        msg = "No matching trace found for {pick}"
+                        self.log(msg.format(pick=str(pick_1)), level="warning")
+                        continue
                     trace_2 = st_2[0]
+
                     if trace_1.id != trace_2.id:
                         msg = "Non matching ids during cross correlation. "
                         msg += "(%s and %s)" % (trace_1.id, trace_2.id)
                         self.log(msg, level="warning")
+                        continue
                     if trace_1.stats.sampling_rate != \
                             trace_2.stats.sampling_rate:
-                        msg = "Non sampling rates during cross correlation. "
+                        msg = ("Non matching sampling rates during cross "
+                               "correlation. ")
                         msg += "(%s and %s)" % (trace_1.id, trace_2.id)
                         self.log(msg, level="warning")
+                        continue
+
                     # Call the cross correlation function.
                     with warnings.catch_warnings():
                         warnings.simplefilter("ignore")
@@ -936,7 +979,10 @@ class HypoDDRelocator(object):
                         except Exception, err:
                             # XXX: Maybe maxlag is too short?
                             if not err.message.startswith("Less than 3"):
-                                raise err
+                                msg = "Error during cross correlating: "
+                                msg += err.message
+                                self.log(msg, level="error")
+                                continue
                     all_cross_correlations.append((pick2_corr,
                                            cross_corr_coeff, channel_weight))
                 if len(all_cross_correlations) == 0:
@@ -1103,10 +1149,10 @@ class HypoDDRelocator(object):
             # Use imod 5 which allows for negative station elevations by using
             # straight rays.
             forward_model = [
-                "5",  # IMOD
+                "0",  # IMOD
+                "%i %.2f" % (len(layers), ratio),
                 " ".join(depths),
-                " ".join(velocities),
-                str(ratio)]
+                " ".join(velocities)]
             #forward_model = [ \
                 #"0",  # IMOD
                  ## If IMOD=0, number of layers and v_p/v_s ration.
@@ -1239,7 +1285,8 @@ class HypoDDRelocator(object):
             magnitudes.append(event.magnitudes[0])
             # Use color to Code the different events. Colorcode by event
             # cluster or indicate if an event did not get relocated.
-            if not event.origins[-1].method_id.resource_id == "HypoDD":
+            if event.origins[-1].method_id is None or \
+               event.origins[-1].method_id.resource_id != "HypoDD":
                 colors.append(color_map[0])
             # Otherwise get the cluster id, stored in the comments.
             else:
