@@ -267,13 +267,19 @@ class HypoDDRelocator(object):
         self.stations = {}
         for station_file in self.station_files:
             p = Parser(station_file)
-            # Useful information is stored in Blockette 50.
-            blkt_50 = p.stations[0][0]
-            self.stations["%s.%s" % (blkt_50.network_code,
-                             blkt_50.station_call_letters)] = {
-                                 "latitude": blkt_50.latitude,
-                                 "longitude": blkt_50.longitude,
-                                 "elevation": int(round(blkt_50.elevation))}
+            # In theory it would be enough to parse Blockette 50, put faulty
+            # SEED files do not store enough information in them, so
+            # blockettes 52 need to be parsed...
+            for station in p.stations:
+                for blockette in station:
+                    if blockette.id != 52:
+                        continue
+                    station_id = "%s.%s" % (station[0].network_code,
+                                            station[0].station_call_letters)
+                    self.stations[station_id] = {
+                        "latitude": blockette.latitude,
+                        "longitude": blockette.longitude,
+                        "elevation": int(round(blockette.elevation))}
         with open(serialized_station_file, "w") as open_file:
             json.dump(self.stations, open_file)
         self.log("Done parsing stations.")
