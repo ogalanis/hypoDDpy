@@ -1,10 +1,13 @@
 # hypoDDpy
 
-This a collection of tools to run [HypoDD](http://www.ldeo.columbia.edu/~felixw/hypoDD.html) by Felix Waldhauser.
+This a collection of tools to run
+[HypoDD](http://www.ldeo.columbia.edu/~felixw/hypoDD.html) by Felix Waldhauser.
 
-It takes event files in the QuakeML format, station data in the SEED format and waveform data in any format ObsPy can read and does all the rest.
+It takes event files in the QuakeML format, station data in the SEED format and
+waveform data in any format ObsPy can read and does all the rest.
 
-The output is one QuakeML file with the relocated events having one additional Origin node.
+The output is one QuakeML file with the relocated events having one additional
+Origin node. The events that could not be relocated will not be changed.
 
 ![Flowchart 1](https://raw.github.com/krischer/hypoDDpy/master/img/flowchart.png)
 
@@ -17,9 +20,10 @@ The output is one QuakeML file with the relocated events having one additional O
 * A recent [ObsPy](http://obspy.org) version
 
 ### Installation
-hypoDDpy is currently working with HypoDD 2.1b which you have to acquire from Felix Waldhauser.
+hypoDDpy currently works with HypoDD 2.1b which you will have to acquire
+separately from Felix Waldhauser.
 
-Put the archive in the following subdirectory:
+Put the archive here:
 ```
 hypoddpy/src/HYPODD_2.1b.tar.gz
 ```
@@ -31,12 +35,13 @@ pip install -v -e .
 python setup.py develop
 ```
 
-The inplace install is a good idea because there is a chance that you will have to adjust the source code.
+The in-place install is a good idea because there is a chance that you will have to adjust the source code.
 
 
 ### Running it
 
-It is steered via a Python script that you will have to create. It should be rather self-explanatory.
+It is steered via a Python script that you will have to create. It should be
+rather self-explanatory.
 
 After you created it, simply run it to perform the relocation.
 
