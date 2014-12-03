@@ -339,8 +339,7 @@ class HypoDDRelocator(object):
                                  minute=event["origin_time"].minute,
                                  # Seconds + microseconds
                                  second=float(event["origin_time"].second) +
-                                 (float(event["origin_time"]
-                                  .microsecond) / 1000.0),
+                                 (event["origin_time"].microsecond / 1e6),
                                  latitude=event["origin_latitude"],
                                  longitude=event["origin_longitude"],
                                  # QuakeML depth is in meters. Convert to km.
