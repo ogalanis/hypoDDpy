@@ -126,7 +126,9 @@ class HypoDDRelocator(object):
         self._cross_correlate_picks()
         self._write_hypoDD_inp_file()
         self._run_hypodd()
-        self._create_output_event_file(create_plots=create_plots)
+        self._create_output_event_file()
+        if create_plots:
+            self._create_plots()
 
     def add_event_files(self, event_files):
         """
@@ -1178,18 +1180,16 @@ class HypoDDRelocator(object):
             raise HypoDDException(msg)
         return self.forward_model_string
 
-    def _create_output_event_file(self, create_plots=True):
+    def _create_output_event_file(self):
         """
         Write the final output file in QuakeML format.
-
-        :param create_plots: If True, some plots will be produced and put in
-            the working_dir/output_files directory.
         """
         self.log("Writing final output file...")
         hypodd_reloc = os.path.join(os.path.join(self.working_dir,
             "output_files", "hypoDD.reloc"))
 
         cat = Catalog()
+        self.output_catalog = cat
         for filename in self.event_files:
             cat += readEvents(filename)
 
@@ -1229,20 +1229,15 @@ class HypoDDRelocator(object):
                 event.origins.append(new_origin)
         cat.write(self.output_event_file, format="quakeml")
 
-        # Pass the catalog object to avoid having to reread the files.
-        if create_plots is True:
-            self._create_plots(catalog=cat)
-
         self.log("Finished! Final output file: %s" % self.output_event_file)
 
-    def _create_plots(self, catalog):
+    def _create_plots(self):
         """
         Creates some plots of the relocated event Catalog.
-
-        :param catalog: `obspy.core.event.Catalog` object.
         """
         import matplotlib.pylab as plt
 
+        catalog = self.output_catalog
         # Generate the output plot filenames.
         original_filename = os.path.join(self.paths["output_files"],
             "original_event_location.pdf")
@@ -1323,6 +1318,7 @@ class HypoDDRelocator(object):
         plot3_xlim = plt.xlim()
         plot3_ylim = plt.ylim()
         plt.savefig(original_filename)
+        self.log("Output figure: %s" % original_filename)
 
         # Plot the relocated event locations.
         plt.clf()
@@ -1345,3 +1341,4 @@ class HypoDDRelocator(object):
         plt.xlim(plot3_xlim)
         plt.ylim(plot3_ylim)
         plt.savefig(relocated_filename)
+        self.log("Output figure: %s" % relocated_filename)
