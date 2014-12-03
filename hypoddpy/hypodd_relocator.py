@@ -983,6 +983,12 @@ class HypoDDRelocator(object):
                                trace.stats.endtime < min_endtime_st_2:
                                 st_2.remove(trace)
 
+                        # cleanup merges, in case the event is included in
+                        # multiple traces (happens for events with very close
+                        # origin times)
+                        st_1.merge(-1)
+                        st_2.merge(-1)
+
                         if len(st_1) > 1:
                             msg = "More than one matching trace found for {pick}"
                             self.log(msg.format(pick=str(pick_1)), level="warning")
