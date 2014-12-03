@@ -1236,6 +1236,8 @@ class HypoDDRelocator(object):
         Creates some plots of the relocated event Catalog.
         """
         import matplotlib.pylab as plt
+        from matplotlib.cm import get_cmap
+        from matplotlib.colors import ColorConverter
 
         catalog = self.output_catalog
         # Generate the output plot filenames.
@@ -1262,8 +1264,8 @@ class HypoDDRelocator(object):
         # magenta: relocated with cluster id 7
         # brown: relocated with cluster id 8
         # lime: relocated with cluster id >8 or undetermined cluster_id
-        color_map = ["grey", "red", "green", "blue", "yellow", "orange",
-            "cyan", "magenta", "brown", "lime"]
+        color_invalid = ColorConverter().to_rgba("grey")
+        cmap = get_cmap("Paired", 12)
 
         colors = []
         magnitudes = []
@@ -1281,18 +1283,18 @@ class HypoDDRelocator(object):
             # Use color to Code the different events. Colorcode by event
             # cluster or indicate if an event did not get relocated.
             if event.origins[-1].method_id is None or \
-               event.origins[-1].method_id.resource_id != "HypoDD":
-                colors.append(color_map[0])
+               "HYPODD" not in str(event.origins[-1].method_id).upper():
+                colors.append(color_invalid)
             # Otherwise get the cluster id, stored in the comments.
             else:
-                cluster_id = 9
                 for comment in event.origins[-1].comments:
                     comment = comment.text
-                    if "HypoDD cluster id" in comment:
+                    if comment and "HypoDD cluster id" in comment:
                         cluster_id = int(comment.split(":")[-1])
-                if cluster_id > 9:
-                    cluster_id = 9
-                colors.append(color_map[cluster_id])
+                        break
+                else:
+                    cluster_id = 0
+                colors.append(cmap(int(cluster_id)))
 
         # Plot the original event location.
         plt.subplot(221)
