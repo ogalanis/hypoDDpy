@@ -412,7 +412,7 @@ class HypoDDRelocator(object):
         for event in catalog:
             current_event = {}
             self.events.append(current_event)
-            current_event["event_id"] = event.resource_id.resource_id
+            current_event["event_id"] = str(event.resource_id)
             # Take the value from the first event.
             current_event["magnitude"] = event.magnitudes[0].mag
             # Always take the first origin.
@@ -1224,8 +1224,8 @@ class HypoDDRelocator(object):
                 new_origin.method_id = "HypoDD"
                 # Put the cluster id in the comments to be able to use it later
                 # on.
-                new_origin.comments.append(Comment("HypoDD cluster id: %i" %
-                    cluster_id))
+                new_origin.comments.append(Comment(
+                    text="HypoDD cluster id: %i" % cluster_id))
                 event.origins.append(new_origin)
         cat.write(self.output_event_file, format="quakeml")
 
