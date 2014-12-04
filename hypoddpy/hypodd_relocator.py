@@ -485,6 +485,8 @@ class HypoDDRelocator(object):
                     discarded_picks += 0
                     continue
                 current_event["picks"].append(current_pick)
+        # Sort events by origin time
+        self.events.sort(key=lambda event: event["origin_time"])
         # Serialize the event dict. Copy it so the times can be converted to
         # strings.
         events = copy.deepcopy(self.events)
