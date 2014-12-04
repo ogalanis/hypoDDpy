@@ -269,8 +269,11 @@ class HypoDDCompiler(object):
             open_file.write(self.hypodd_inc_file)
         # Compile it.
         self.log("Compiling HypoDD ...")
-        retcode = subprocess.Popen("make",
-            cwd=self.paths["make_directory"]).wait()
+        sub = subprocess.Popen(
+            "make", cwd=self.paths["make_directory"], stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
+        self.log(sub.stdout.read())
+        retcode = sub.wait()
         if retcode != 0:
             msg = "Problem compiling HypoDD."
             raise HypoDDCompilationError(msg)

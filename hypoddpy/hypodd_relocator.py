@@ -605,12 +605,22 @@ class HypoDDRelocator(object):
         """
         Compiles HypoDD and ph2dt using
         """
-        self.log("Initating HypoDD compilation...")
-        compiler = HypoDDCompiler(working_dir=self.working_dir,
-                                  log_function=self.log)
-        compiler.configure(MAXEVE=1.2 * len(self.events),
-                           MAXSTA=1.2 * len(self.stations))
-        compiler.make()
+        logfile = os.path.join(self.working_dir, "compilation.log")
+        self.log("Initating HypoDD compilation (logfile: %s)..." % logfile)
+        with open(logfile, "w") as fh:
+            def logfunc(line):
+                fh.write(line)
+                fh.write(os.linesep)
+            compiler = HypoDDCompiler(working_dir=self.working_dir,
+                                      log_function=logfunc)
+            compiler.configure(MAXEVE=len(self.events) + 30,
+                               #MAXEVE0=len(self.events) + 30,
+                               MAXEVE0=200,
+                               MAXDATA=100000,
+                               MAXDATA0=60000,
+                               MAXCL=20,
+                               MAXSTA=len(self.stations) + 10)
+            compiler.make()
 
     def _run_hypodd(self):
         """
