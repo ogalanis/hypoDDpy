@@ -72,6 +72,8 @@ class HypoDDRelocator(object):
                 cc_p_phase_weighting.get(phase, 0.0))
             cc_s_phase_weighting[phase] = float(
                 cc_s_phase_weighting.get(phase, 0.0))
+        # set an equal phase weighting scheme by uncertainty
+        self.phase_weighting = lambda (sta_id, ph_type, time, uncertainty): 1.0
         # Set the cross correlation parameters.
         self.cc_param = {
             "cc_time_before": cc_time_before,
@@ -314,13 +316,22 @@ class HypoDDRelocator(object):
             open_file.write(station_string)
         self.log("Created station.dat input file.")
 
-    def _write_catalog_input_file(self):
+    def _write_catalog_input_file(self, phase_weighting=None):
         """
         Write the phase.dat input file for ph2dt.
 
         The format is described in the HypoDD manual. All event ids will be
         mapped.
+
+        :type phase_weighting: func
+        :param phase_weighting: Function that returns the weighting (from 0.0
+            to 1.0) for each phase depending on the pick. The following
+            parameters are fed to the function as arguments: station id, phase
+            type, pick time, pick uncertainty. Note that pick uncertainty input
+            can be None.
         """
+        if phase_weighting is None:
+            phase_weighting = self.phase_weighting
         phase_dat_file = os.path.join(self.paths["input_files"],
                                       "phase.dat")
         if os.path.exists(phase_dat_file):
@@ -373,11 +384,13 @@ class HypoDDRelocator(object):
                         station_id=pick["station_id"])
                     self.log(msg, level="warning")
                     continue
+                weight = phase_weighting(pick['station_id'], pick['phase'],
+                                         pick['pick_time'],
+                                         pick['pick_time_error'])
                 pick_string = string.format(
                     station_id=pick["station_id"],
                     travel_time=travel_time,
-                    # XXX: Constant weight so far.
-                    weight=1.0,
+                    weight=weight,
                     phase=pick["phase"].upper())
                 event_strings.append(pick_string)
         event_string = "\n".join(event_strings)
@@ -461,7 +474,7 @@ class HypoDDRelocator(object):
                     current_pick["pick_time_error"] = \
                         pick.time_errors.uncertainty
                 else:
-                    current_pick["pick_time_error"] = 0.0
+                    current_pick["pick_time_error"] = None
                 current_pick["station_id"] = "%s.%s" % \
                     (pick.waveform_id.network_code,
                      pick.waveform_id.station_code)
