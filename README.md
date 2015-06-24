@@ -11,6 +11,13 @@ Origin node. The events that could not be relocated will not be changed.
 
 ![Flowchart 1](https://raw.github.com/krischer/hypoDDpy/master/img/flowchart.png)
 
+### Did It Help You in Your Research?
+
+If yes, consider citing this software! Just click on this button here to get all the required information:
+
+[![DOI](https://zenodo.org/badge/doi/10.5281/zenodo.18907.svg)](http://dx.doi.org/10.5281/zenodo.18907)
+
+
 ### Requirements
 
 * Python 2.6 or 2.7
