@@ -72,6 +72,8 @@ class HypoDDRelocator(object):
                 cc_p_phase_weighting.get(phase, 0.0))
             cc_s_phase_weighting[phase] = float(
                 cc_s_phase_weighting.get(phase, 0.0))
+        # set an equal phase weighting scheme by uncertainty
+        self.phase_weighting = lambda (sta_id, ph_type, time, uncertainty): 1.0
         # Set the cross correlation parameters.
         self.cc_param = {
             "cc_time_before": cc_time_before,
@@ -82,6 +84,7 @@ class HypoDDRelocator(object):
             "cc_p_phase_weighting": cc_p_phase_weighting,
             "cc_s_phase_weighting": cc_s_phase_weighting,
             "cc_min_allowed_cross_corr_coeff": cc_min_allowed_cross_corr_coeff}
+        self.cc_results = {}
 
         # Setup logging.
         logging.basicConfig(level=logging.DEBUG,
@@ -98,12 +101,18 @@ class HypoDDRelocator(object):
         # Configure the paths.
         self._configure_paths()
 
-    def start_relocation(self, output_event_file, create_plots=True):
+    def start_relocation(self, output_event_file,
+                         output_cross_correlation_file=None,
+                         create_plots=True):
         """
         Start the relocation with HypoDD and write the output to
         output_event_file.
 
+        :type output_event_file: str
         :param output_event_file: The filename of the final QuakeML file.
+        :param output_cross_correlation_file: Filename of cross correlation
+            results output.
+        :type output_cross_correlation_file: str
         :param create_plots: If true, some plots will be created in
             working_dir/output_files. Defaults to True.
         """
@@ -123,10 +132,12 @@ class HypoDDRelocator(object):
         self._compile_hypodd()
         self._run_ph2dt()
         self._parse_waveform_files()
-        self._cross_correlate_picks()
+        self._cross_correlate_picks(outfile=output_cross_correlation_file)
         self._write_hypoDD_inp_file()
         self._run_hypodd()
-        self._create_output_event_file(create_plots=create_plots)
+        self._create_output_event_file()
+        if create_plots:
+            self._create_plots()
 
     def add_event_files(self, event_files):
         """
@@ -305,13 +316,22 @@ class HypoDDRelocator(object):
             open_file.write(station_string)
         self.log("Created station.dat input file.")
 
-    def _write_catalog_input_file(self):
+    def _write_catalog_input_file(self, phase_weighting=None):
         """
         Write the phase.dat input file for ph2dt.
 
         The format is described in the HypoDD manual. All event ids will be
         mapped.
+
+        :type phase_weighting: func
+        :param phase_weighting: Function that returns the weighting (from 0.0
+            to 1.0) for each phase depending on the pick. The following
+            parameters are fed to the function as arguments: station id, phase
+            type, pick time, pick uncertainty. Note that pick uncertainty input
+            can be None.
         """
+        if phase_weighting is None:
+            phase_weighting = self.phase_weighting
         phase_dat_file = os.path.join(self.paths["input_files"],
                                       "phase.dat")
         if os.path.exists(phase_dat_file):
@@ -330,8 +350,7 @@ class HypoDDRelocator(object):
                                  minute=event["origin_time"].minute,
                                  # Seconds + microseconds
                                  second=float(event["origin_time"].second) +
-                                 (float(event["origin_time"]
-                                  .microsecond) / 1000.0),
+                                 (event["origin_time"].microsecond / 1e6),
                                  latitude=event["origin_latitude"],
                                  longitude=event["origin_longitude"],
                                  # QuakeML depth is in meters. Convert to km.
@@ -365,11 +384,13 @@ class HypoDDRelocator(object):
                         station_id=pick["station_id"])
                     self.log(msg, level="warning")
                     continue
+                weight = phase_weighting(pick['station_id'], pick['phase'],
+                                         pick['pick_time'],
+                                         pick['pick_time_error'])
                 pick_string = string.format(
                     station_id=pick["station_id"],
                     travel_time=travel_time,
-                    # XXX: Constant weight so far.
-                    weight=1.0,
+                    weight=weight,
                     phase=pick["phase"].upper())
                 event_strings.append(pick_string)
         event_string = "\n".join(event_strings)
@@ -410,7 +431,7 @@ class HypoDDRelocator(object):
         for event in catalog:
             current_event = {}
             self.events.append(current_event)
-            current_event["event_id"] = event.resource_id.resource_id
+            current_event["event_id"] = str(event.resource_id)
             # Take the value from the first event.
             current_event["magnitude"] = event.magnitudes[0].mag
             # Always take the first origin.
@@ -447,12 +468,13 @@ class HypoDDRelocator(object):
             current_event["picks"] = []
             for pick in event.picks:
                 current_pick = {}
+                current_pick["id"] = str(pick.resource_id)
                 current_pick["pick_time"] = pick.time
                 if hasattr(pick.time_errors, "uncertainty"):
                     current_pick["pick_time_error"] = \
                         pick.time_errors.uncertainty
                 else:
-                    current_pick["pick_time_error"] = 0.0
+                    current_pick["pick_time_error"] = None
                 current_pick["station_id"] = "%s.%s" % \
                     (pick.waveform_id.network_code,
                      pick.waveform_id.station_code)
@@ -463,6 +485,8 @@ class HypoDDRelocator(object):
                     discarded_picks += 0
                     continue
                 current_event["picks"].append(current_pick)
+        # Sort events by origin time
+        self.events.sort(key=lambda event: event["origin_time"])
         # Serialize the event dict. Copy it so the times can be converted to
         # strings.
         events = copy.deepcopy(self.events)
@@ -581,12 +605,22 @@ class HypoDDRelocator(object):
         """
         Compiles HypoDD and ph2dt using
         """
-        self.log("Initating HypoDD compilation...")
-        compiler = HypoDDCompiler(working_dir=self.working_dir,
-                                  log_function=self.log)
-        compiler.configure(MAXEVE=1.2 * len(self.events),
-                           MAXSTA=1.2 * len(self.stations))
-        compiler.make()
+        logfile = os.path.join(self.working_dir, "compilation.log")
+        self.log("Initating HypoDD compilation (logfile: %s)..." % logfile)
+        with open(logfile, "w") as fh:
+            def logfunc(line):
+                fh.write(line)
+                fh.write(os.linesep)
+            compiler = HypoDDCompiler(working_dir=self.working_dir,
+                                      log_function=logfunc)
+            compiler.configure(MAXEVE=len(self.events) + 30,
+                               #MAXEVE0=len(self.events) + 30,
+                               MAXEVE0=200,
+                               MAXDATA=100000,
+                               MAXDATA0=60000,
+                               MAXCL=20,
+                               MAXSTA=len(self.stations) + 10)
+            compiler.make()
 
     def _run_hypodd(self):
         """
@@ -778,10 +812,36 @@ class HypoDDRelocator(object):
             json.dump(waveform_information, open_file)
         self.log("Successfully parsed all waveform files.")
 
-    def _cross_correlate_picks(self):
+    def save_cross_correlation_results(self, filename):
+        with open(filename, "w") as open_file:
+            json.dump(self.cc_results, open_file)
+        self.log("Successfully saved cross correlation results to file: %s." %
+                 filename)
+
+    def load_cross_correlation_results(self, filename, purge=False):
+        """
+        Load previously computed and saved cross correlation results.
+
+        :param purge: If True any already present cross correlation
+            information will be discarded, if False loaded information will be
+            used to update any currently present information.
+        """
+        with open(filename, "r") as open_file:
+            cc_ = json.load(open_file)
+        if purge:
+            self.cc_results = cc_
+        else:
+            for id1, items in cc_.iteritems():
+                self.cc_results.setdefault(id1, {}).update(items)
+        self.log("Successfully loaded cross correlation results from file: "
+                 "%s." % filename)
+
+    def _cross_correlate_picks(self, outfile=None):
         """
         Reads the event pairs matched in dt.ct which are selected by ph2dt and
         calculate cross correlated differential travel_times for every pair.
+
+        :param outfile: Filename of cross correlation results output.
         """
         ct_file_path = os.path.join(self.paths["input_files"], "dt.cc")
         if os.path.exists(ct_file_path):
@@ -867,134 +927,171 @@ class HypoDDRelocator(object):
                 # No corresponding pick could be found.
                 if pick_2 is None:
                     continue
-                station_id = pick_1["station_id"]
-                # Try to find data for both picks.
-                data_files_1 = self._find_data(station_id,
-                                           pick_1["pick_time"] -
-                                           self.cc_param["cc_time_before"],
-                                           self.cc_param["cc_time_before"] +
-                                           self.cc_param["cc_time_after"])
-                data_files_2 = self._find_data(station_id,
-                                           pick_2["pick_time"] -
-                                           self.cc_param["cc_time_before"],
-                                           self.cc_param["cc_time_before"] +
-                                           self.cc_param["cc_time_after"])
-                # If any pick has no data, skip this pick pair.
-                if data_files_1 is False or data_files_2 is False:
-                    continue
-                # Read all files.
-                stream_1 = Stream()
-                stream_2 = Stream()
-                for waveform_file in data_files_1:
-                    stream_1 += read(waveform_file)
-                for waveform_file in data_files_2:
-                    stream_2 += read(waveform_file)
-                # Get the corresponing pick weighting dictionary.
-                if pick_1_phase == "P":
-                    pick_weight_dict = self.cc_param[
-                        "cc_p_phase_weighting"]
-                elif pick_1_phase == "S":
-                    pick_weight_dict = self.cc_param[
-                        "cc_s_phase_weighting"]
-                all_cross_correlations = []
-                # Loop over all picks and weight them.
-                for channel, channel_weight in pick_weight_dict.iteritems():
-                    if channel_weight == 0.0:
+                # we got some previously computed information..
+                if pick_2['id'] in self.cc_results.get(pick_1['id'], {}):
+                    cc_result = self.cc_results.get(pick_1['id'], {})[pick_2['id']]
+                    # .. and it's actual data
+                    if isinstance(cc_result, (list, tuple)) and len(cc_result) == 2:
+                        pick2_corr, cross_corr_coeff = cc_result
+                    # .. but it's only an error message or None for a silent skip
+                    else:
+                        self.log("Skipping pick pair due to error message in preloaded cross correlation result: %s" % str(cc_result))
                         continue
-                    # Filter the files to obtain the correct trace.
-                    network, station = station_id.split(".")
-                    st_1 = stream_1.select(network=network, station=station,
-                                           channel="*%s" % channel)
-                    st_2 = stream_2.select(network=network, station=station,
-                                           channel="*%s" % channel)
-                    max_starttime_st_1 = pick_1["pick_time"] - \
-                        self.cc_param["cc_time_before"]
-                    min_endtime_st_1 = pick_1["pick_time"] + \
-                        self.cc_param["cc_time_after"]
-                    max_starttime_st_2 = pick_2["pick_time"] - \
-                        self.cc_param["cc_time_before"]
-                    min_endtime_st_2 = pick_2["pick_time"] + \
-                        self.cc_param["cc_time_after"]
-                    # Attempt to find the correct trace.
-                    for trace in st_1:
-                        if trace.stats.starttime > max_starttime_st_1 or \
-                           trace.stats.endtime < min_endtime_st_1:
-                            st_1.remove(trace)
-                    for trace in st_2:
-                        if trace.stats.starttime > max_starttime_st_2 or \
-                           trace.stats.endtime < min_endtime_st_2:
-                            st_2.remove(trace)
+                # we got some previously computed information (but picks were order other way round)..
+                elif pick_1['id'] in self.cc_results.get(pick_2['id'], {}):
+                    cc_result = self.cc_results.get(pick_2['id'], {})[pick_1['id']]
+                    # .. and it's actual data
+                    if isinstance(cc_result, (list, tuple)) and len(cc_result) == 2:
+                        # revert time correction for other pick order!
+                        pick2_corr, cross_corr_coeff = -cc_result[0], cc_result[1]
+                    # .. but it's only an error message or None for a silent skip
+                    else:
+                        self.log("Skipping pick pair due to error message in preloaded cross correlation result: %s" % str(cc_result))
+                        continue
+                else:
+                    station_id = pick_1["station_id"]
+                    # Try to find data for both picks.
+                    data_files_1 = self._find_data(station_id,
+                                               pick_1["pick_time"] -
+                                               self.cc_param["cc_time_before"],
+                                               self.cc_param["cc_time_before"] +
+                                               self.cc_param["cc_time_after"])
+                    data_files_2 = self._find_data(station_id,
+                                               pick_2["pick_time"] -
+                                               self.cc_param["cc_time_before"],
+                                               self.cc_param["cc_time_before"] +
+                                               self.cc_param["cc_time_after"])
+                    # If any pick has no data, skip this pick pair.
+                    if data_files_1 is False or data_files_2 is False:
+                        continue
+                    # Read all files.
+                    stream_1 = Stream()
+                    stream_2 = Stream()
+                    for waveform_file in data_files_1:
+                        stream_1 += read(waveform_file)
+                    for waveform_file in data_files_2:
+                        stream_2 += read(waveform_file)
+                    # Get the corresponing pick weighting dictionary.
+                    if pick_1_phase == "P":
+                        pick_weight_dict = self.cc_param[
+                            "cc_p_phase_weighting"]
+                    elif pick_1_phase == "S":
+                        pick_weight_dict = self.cc_param[
+                            "cc_s_phase_weighting"]
+                    all_cross_correlations = []
+                    # Loop over all picks and weight them.
+                    for channel, channel_weight in pick_weight_dict.iteritems():
+                        if channel_weight == 0.0:
+                            continue
+                        # Filter the files to obtain the correct trace.
+                        network, station = station_id.split(".")
+                        st_1 = stream_1.select(network=network, station=station,
+                                               channel="*%s" % channel)
+                        st_2 = stream_2.select(network=network, station=station,
+                                               channel="*%s" % channel)
+                        max_starttime_st_1 = pick_1["pick_time"] - \
+                            self.cc_param["cc_time_before"]
+                        min_endtime_st_1 = pick_1["pick_time"] + \
+                            self.cc_param["cc_time_after"]
+                        max_starttime_st_2 = pick_2["pick_time"] - \
+                            self.cc_param["cc_time_before"]
+                        min_endtime_st_2 = pick_2["pick_time"] + \
+                            self.cc_param["cc_time_after"]
+                        # Attempt to find the correct trace.
+                        for trace in st_1:
+                            if trace.stats.starttime > max_starttime_st_1 or \
+                               trace.stats.endtime < min_endtime_st_1:
+                                st_1.remove(trace)
+                        for trace in st_2:
+                            if trace.stats.starttime > max_starttime_st_2 or \
+                               trace.stats.endtime < min_endtime_st_2:
+                                st_2.remove(trace)
 
-                    if len(st_1) > 1:
-                        msg = "More than one matching trace found for {pick}"
-                        continue
-                        self.log(msg.format(pick=str(pick_1)), level="warning")
-                    elif len(st_1) == 0:
-                        msg = "No matching trace found for {pick}"
-                        self.log(msg.format(pick=str(pick_1)), level="warning")
-                        continue
-                    trace_1 = st_1[0]
+                        # cleanup merges, in case the event is included in
+                        # multiple traces (happens for events with very close
+                        # origin times)
+                        st_1.merge(-1)
+                        st_2.merge(-1)
 
-                    if len(st_2) > 1:
-                        msg = "More than one matching trace found for {pick}"
-                        continue
-                        self.log(msg.format(pick=str(pick_1)), level="warning")
-                    elif len(st_2) == 0:
-                        msg = "No matching trace found for {pick}"
-                        self.log(msg.format(pick=str(pick_1)), level="warning")
-                        continue
-                    trace_2 = st_2[0]
+                        if len(st_1) > 1:
+                            msg = "More than one matching trace found for {pick}"
+                            self.log(msg.format(pick=str(pick_1)), level="warning")
+                            self.cc_results.setdefault(pick_1['id'], {})[pick_2['id']] = msg
+                            continue
+                        elif len(st_1) == 0:
+                            msg = "No matching trace found for {pick}"
+                            self.log(msg.format(pick=str(pick_1)), level="warning")
+                            self.cc_results.setdefault(pick_1['id'], {})[pick_2['id']] = msg
+                            continue
+                        trace_1 = st_1[0]
 
-                    if trace_1.id != trace_2.id:
-                        msg = "Non matching ids during cross correlation. "
-                        msg += "(%s and %s)" % (trace_1.id, trace_2.id)
-                        self.log(msg, level="warning")
-                        continue
-                    if trace_1.stats.sampling_rate != \
-                            trace_2.stats.sampling_rate:
-                        msg = ("Non matching sampling rates during cross "
-                               "correlation. ")
-                        msg += "(%s and %s)" % (trace_1.id, trace_2.id)
-                        self.log(msg, level="warning")
-                        continue
+                        if len(st_2) > 1:
+                            msg = "More than one matching trace found for {pick}"
+                            self.log(msg.format(pick=str(pick_1)), level="warning")
+                            self.cc_results.setdefault(pick_1['id'], {})[pick_2['id']] = msg
+                            continue
+                        elif len(st_2) == 0:
+                            msg = "No matching trace found for {pick}"
+                            self.log(msg.format(pick=str(pick_1)), level="warning")
+                            self.cc_results.setdefault(pick_1['id'], {})[pick_2['id']] = msg
+                            continue
+                        trace_2 = st_2[0]
 
-                    # Call the cross correlation function.
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore")
-                        try:
-                            pick2_corr, cross_corr_coeff = \
-                                xcorrPickCorrection(
-                                    pick_1["pick_time"], trace_1,
-                                    pick_2["pick_time"], trace_2,
-                                    t_before=self.cc_param["cc_time_before"],
-                                    t_after=self.cc_param["cc_time_after"],
-                                    cc_maxlag=self.cc_param["cc_maxlag"],
-                                    filter="bandpass",
-                                    filter_options={
-                                        "freqmin":
-                                        self.cc_param["cc_filter_min_freq"],
-                                        "freqmax":
-                                        self.cc_param["cc_filter_max_freq"]},
-                                    plot=False)
-                        except Exception, err:
-                            # XXX: Maybe maxlag is too short?
-                            if not err.message.startswith("Less than 3"):
-                                msg = "Error during cross correlating: "
-                                msg += err.message
-                                self.log(msg, level="error")
-                                continue
-                    all_cross_correlations.append((pick2_corr,
-                                           cross_corr_coeff, channel_weight))
-                if len(all_cross_correlations) == 0:
-                    continue
-                # Now combine all of them based upon their weight.
-                pick2_corr = sum([_i[0] * _i[2] for _i in
-                                  all_cross_correlations])
-                cross_corr_coeff = sum([_i[1] * _i[2] for _i in
-                                        all_cross_correlations])
-                weight = sum([_i[2] for _i in all_cross_correlations])
-                pick2_corr /= weight
-                cross_corr_coeff /= weight
+                        if trace_1.id != trace_2.id:
+                            msg = "Non matching ids during cross correlation. "
+                            msg += "(%s and %s)" % (trace_1.id, trace_2.id)
+                            self.log(msg, level="warning")
+                            self.cc_results.setdefault(pick_1['id'], {})[pick_2['id']] = msg
+                            continue
+                        if trace_1.stats.sampling_rate != \
+                                trace_2.stats.sampling_rate:
+                            msg = ("Non matching sampling rates during cross "
+                                   "correlation. ")
+                            msg += "(%s and %s)" % (trace_1.id, trace_2.id)
+                            self.log(msg, level="warning")
+                            self.cc_results.setdefault(pick_1['id'], {})[pick_2['id']] = msg
+                            continue
+
+                        # Call the cross correlation function.
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore")
+                            try:
+                                pick2_corr, cross_corr_coeff = \
+                                    xcorrPickCorrection(
+                                        pick_1["pick_time"], trace_1,
+                                        pick_2["pick_time"], trace_2,
+                                        t_before=self.cc_param["cc_time_before"],
+                                        t_after=self.cc_param["cc_time_after"],
+                                        cc_maxlag=self.cc_param["cc_maxlag"],
+                                        filter="bandpass",
+                                        filter_options={
+                                            "freqmin":
+                                            self.cc_param["cc_filter_min_freq"],
+                                            "freqmax":
+                                            self.cc_param["cc_filter_max_freq"]},
+                                        plot=False)
+                            except Exception, err:
+                                # XXX: Maybe maxlag is too short?
+                                if not err.message.startswith("Less than 3"):
+                                    msg = "Error during cross correlating: "
+                                    msg += err.message
+                                    self.log(msg, level="error")
+                                    self.cc_results.setdefault(pick_1['id'], {})[pick_2['id']] = msg
+                                    continue
+                        all_cross_correlations.append((pick2_corr,
+                                               cross_corr_coeff, channel_weight))
+                    if len(all_cross_correlations) == 0:
+                        self.cc_results.setdefault(pick_1['id'], {})[pick_2['id']] = "No cross correlations performed"
+                        continue
+                    # Now combine all of them based upon their weight.
+                    pick2_corr = sum([_i[0] * _i[2] for _i in
+                                      all_cross_correlations])
+                    cross_corr_coeff = sum([_i[1] * _i[2] for _i in
+                                            all_cross_correlations])
+                    weight = sum([_i[2] for _i in all_cross_correlations])
+                    pick2_corr /= weight
+                    cross_corr_coeff /= weight
+                    self.cc_results.setdefault(pick_1['id'], {})[pick_2['id']] = (pick2_corr, cross_corr_coeff)
                 # If the cross_corr_coeff is under the allowed limit, discard
                 # it.
                 if cross_corr_coeff < \
@@ -1016,6 +1113,8 @@ class HypoDDRelocator(object):
                 open_file.write("\n".join(current_pair_strings))
         pbar.finish()
         self.log("Finished calculating cross correlations.")
+        if outfile:
+            self.save_cross_correlation_results(outfile)
         # Assemble final file.
         final_string = []
         for cc_file in glob.iglob(os.path.join(cc_dir, "*.txt")):
@@ -1178,18 +1277,16 @@ class HypoDDRelocator(object):
             raise HypoDDException(msg)
         return self.forward_model_string
 
-    def _create_output_event_file(self, create_plots=True):
+    def _create_output_event_file(self):
         """
         Write the final output file in QuakeML format.
-
-        :param create_plots: If True, some plots will be produced and put in
-            the working_dir/output_files directory.
         """
         self.log("Writing final output file...")
         hypodd_reloc = os.path.join(os.path.join(self.working_dir,
             "output_files", "hypoDD.reloc"))
 
         cat = Catalog()
+        self.output_catalog = cat
         for filename in self.event_files:
             cat += readEvents(filename)
 
@@ -1224,25 +1321,22 @@ class HypoDDRelocator(object):
                 new_origin.method_id = "HypoDD"
                 # Put the cluster id in the comments to be able to use it later
                 # on.
-                new_origin.comments.append(Comment("HypoDD cluster id: %i" %
-                    cluster_id))
+                new_origin.comments.append(Comment(
+                    text="HypoDD cluster id: %i" % cluster_id))
                 event.origins.append(new_origin)
         cat.write(self.output_event_file, format="quakeml")
 
-        # Pass the catalog object to avoid having to reread the files.
-        if create_plots is True:
-            self._create_plots(catalog=cat)
-
         self.log("Finished! Final output file: %s" % self.output_event_file)
 
-    def _create_plots(self, catalog):
+    def _create_plots(self):
         """
         Creates some plots of the relocated event Catalog.
-
-        :param catalog: `obspy.core.event.Catalog` object.
         """
         import matplotlib.pylab as plt
+        from matplotlib.cm import get_cmap
+        from matplotlib.colors import ColorConverter
 
+        catalog = self.output_catalog
         # Generate the output plot filenames.
         original_filename = os.path.join(self.paths["output_files"],
             "original_event_location.pdf")
@@ -1267,8 +1361,8 @@ class HypoDDRelocator(object):
         # magenta: relocated with cluster id 7
         # brown: relocated with cluster id 8
         # lime: relocated with cluster id >8 or undetermined cluster_id
-        color_map = ["grey", "red", "green", "blue", "yellow", "orange",
-            "cyan", "magenta", "brown", "lime"]
+        color_invalid = ColorConverter().to_rgba("grey")
+        cmap = get_cmap("Paired", 12)
 
         colors = []
         magnitudes = []
@@ -1286,18 +1380,18 @@ class HypoDDRelocator(object):
             # Use color to Code the different events. Colorcode by event
             # cluster or indicate if an event did not get relocated.
             if event.origins[-1].method_id is None or \
-               event.origins[-1].method_id.resource_id != "HypoDD":
-                colors.append(color_map[0])
+               "HYPODD" not in str(event.origins[-1].method_id).upper():
+                colors.append(color_invalid)
             # Otherwise get the cluster id, stored in the comments.
             else:
-                cluster_id = 9
                 for comment in event.origins[-1].comments:
                     comment = comment.text
-                    if "HypoDD cluster id" in comment:
+                    if comment and "HypoDD cluster id" in comment:
                         cluster_id = int(comment.split(":")[-1])
-                if cluster_id > 9:
-                    cluster_id = 9
-                colors.append(color_map[cluster_id])
+                        break
+                else:
+                    cluster_id = 0
+                colors.append(cmap(int(cluster_id)))
 
         # Plot the original event location.
         plt.subplot(221)
@@ -1323,6 +1417,7 @@ class HypoDDRelocator(object):
         plot3_xlim = plt.xlim()
         plot3_ylim = plt.ylim()
         plt.savefig(original_filename)
+        self.log("Output figure: %s" % original_filename)
 
         # Plot the relocated event locations.
         plt.clf()
@@ -1345,3 +1440,4 @@ class HypoDDRelocator(object):
         plt.xlim(plot3_xlim)
         plt.ylim(plot3_ylim)
         plt.savefig(relocated_filename)
+        self.log("Output figure: %s" % relocated_filename)
