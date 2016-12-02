@@ -5,10 +5,10 @@ import json
 import logging
 import math
 from obspy.core import read, Stream, UTCDateTime
-from obspy.core.event import Catalog, Comment, Origin, readEvents, \
+from obspy.core.event import Catalog, Comment, Origin, read_events, \
     ResourceIdentifier
-from obspy.signal import xcorrPickCorrection
-from obspy.xseed import Parser
+from obspy.signal.cross_correlation import xcorr_pick_correction
+from obspy.io.xseed import Parser
 import os
 import progressbar
 import shutil
@@ -73,7 +73,7 @@ class HypoDDRelocator(object):
             cc_s_phase_weighting[phase] = float(
                 cc_s_phase_weighting.get(phase, 0.0))
         # set an equal phase weighting scheme by uncertainty
-        self.phase_weighting = lambda (sta_id, ph_type, time, uncertainty): 1.0
+        self.phase_weighting = lambda sta_id, ph_type, time, uncertainty: 1.0
         # Set the cross correlation parameters.
         self.cc_param = {
             "cc_time_before": cc_time_before,
@@ -423,7 +423,7 @@ class HypoDDRelocator(object):
         self.log("Reading all events...")
         catalog = Catalog()
         for event in self.event_files:
-            catalog += readEvents(event)
+            catalog += read_events(event)
         self.events = []
         # Keep track of the number of discarded picks.
         discarded_picks = 0
@@ -1057,7 +1057,7 @@ class HypoDDRelocator(object):
                             warnings.simplefilter("ignore")
                             try:
                                 pick2_corr, cross_corr_coeff = \
-                                    xcorrPickCorrection(
+                                    xcorr_pick_correction(
                                         pick_1["pick_time"], trace_1,
                                         pick_2["pick_time"], trace_2,
                                         t_before=self.cc_param["cc_time_before"],
@@ -1288,7 +1288,7 @@ class HypoDDRelocator(object):
         cat = Catalog()
         self.output_catalog = cat
         for filename in self.event_files:
-            cat += readEvents(filename)
+            cat += read_events(filename)
 
         with open(hypodd_reloc, "r") as open_file:
             for line in open_file:
