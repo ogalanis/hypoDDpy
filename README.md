@@ -24,7 +24,7 @@ If yes, consider citing this software! Just click on this button here to get all
 * NumPy
 * matplotlib
 * progressbar
-* A recent [ObsPy](http://obspy.org) version
+* [ObsPy](http://obspy.org) (Tested on 1.0.2)
 
 ### Installation
 hypoDDpy currently works with HypoDD 2.1b which you will have to acquire
