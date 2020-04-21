@@ -5,6 +5,7 @@ import json
 import logging
 import math
 from obspy.core import read, Stream, UTCDateTime
+from obspy.core.inventory import read_inventory
 from obspy.core.event import Catalog, Comment, Origin, read_events, \
     ResourceIdentifier
 from obspy.signal.cross_correlation import xcorr_pick_correction
@@ -16,8 +17,11 @@ import subprocess
 import sys
 import warnings
 
-from hypodd_compiler import HypoDDCompiler
+from .hypodd_compiler import HypoDDCompiler
 
+
+# Global variable for StationXML or XSEED inventory files (WCC)
+stations_XSEED = False
 
 class HypoDDException(Exception):
     pass
@@ -26,7 +30,8 @@ class HypoDDException(Exception):
 class HypoDDRelocator(object):
     def __init__(self, working_dir, cc_time_before, cc_time_after, cc_maxlag,
                  cc_filter_min_freq, cc_filter_max_freq, cc_p_phase_weighting,
-                 cc_s_phase_weighting, cc_min_allowed_cross_corr_coeff):
+                 cc_s_phase_weighting, cc_min_allowed_cross_corr_coeff,
+                 supress_warning_traces=False, shift_stations=False):
         """
         :param working_dir: The working directory where all temporary and final
             files will be placed.
@@ -55,6 +60,12 @@ class HypoDDRelocator(object):
         :param cc_min_allowed_cross_corr_coeff: The minimum allowed
             cross-correlation coefficient for a differential travel time to be
             accepted.
+        :param supress_warning_traces: Supress warning about traces not being
+            found (useful if you mix stations with different types of
+            component codes (ZNE versus 123, for example))
+        :param shift_stations: Shift station (and model) depths so that
+            the deepest station is at elev=0 (useful for networks with negative
+            elevations (HypoDD can't handle them)
         """
         self.working_dir = working_dir
         if not os.path.exists(working_dir):
@@ -85,6 +96,9 @@ class HypoDDRelocator(object):
             "cc_s_phase_weighting": cc_s_phase_weighting,
             "cc_min_allowed_cross_corr_coeff": cc_min_allowed_cross_corr_coeff}
         self.cc_results = {}
+        self.supress_warnings = {'no_matching_trace': supress_warning_traces}
+        self.shift_stations = shift_stations
+        self.min_elev = 0  # Minimum station elevation (used for shifting)
 
         # Setup logging.
         logging.basicConfig(level=logging.DEBUG,
@@ -144,10 +158,10 @@ class HypoDDRelocator(object):
         Adds all files in event_files to self.event_files. All files will be
         verified to exist but no further checks are done.
         """
-        if isinstance(event_files, basestring):
+        if isinstance(event_files, str):
             event_files = [event_files]
         for event_file in event_files:
-            if not isinstance(event_file, basestring):
+            if not isinstance(event_file, str):
                 msg = "%s is not a filename." % event_file
                 warnings.warn(msg)
                 continue
@@ -162,10 +176,10 @@ class HypoDDRelocator(object):
         Adds all files in station_files to self.station_files. All files will
         be verified to exist but no further checks are done.
         """
-        if isinstance(station_files, basestring):
+        if isinstance(station_files, str):
             station_files = [station_files]
         for station_file in station_files:
-            if not isinstance(station_file, basestring):
+            if not isinstance(station_file, str):
                 msg = "%s is not a filename." % station_file
                 warnings.warn(msg)
                 continue
@@ -180,10 +194,10 @@ class HypoDDRelocator(object):
         Adds all files in waveform_files to self.waveform_files. All files will
         be verified to exist but no further checks are done.
         """
-        if isinstance(waveform_files, basestring):
+        if isinstance(waveform_files, str):
             waveform_files = [waveform_files]
         for waveform_file in waveform_files:
-            if not isinstance(waveform_file, basestring):
+            if not isinstance(waveform_file, str):
                 msg = "%s is not a filename." % waveform_file
                 warnings.warn(msg)
                 continue
@@ -220,7 +234,7 @@ class HypoDDRelocator(object):
         """
         allowed_keys = ["MINWGHT", "MAXDIST", "MAXSEP", "MAXNGH", "MINLNK",
                         "MINOBS", "MAXOBS"]
-        if not isinstance(key, basestring):
+        if not isinstance(key, str):
             msg = "The configuration key needs to be a string"
             warnings.warn(msg)
             return
@@ -253,11 +267,11 @@ class HypoDDRelocator(object):
         logging.info(string)
         # Info is green
         if level == "info":
-            print "\033[0;32m" + ">>> " + string + "\033[1;m"
+            print("\033[0;32m" + ">>> " + string + "\033[1;m")
         # Everything else is currently red.
         else:
             level = level.lower().capitalize()
-            print "\033[1;31m" + ">>> " + level + ": " + string + "\033[1;m"
+            print("\033[1;31m" + ">>> " + level + ": " + string + "\033[1;m")
         sys.stdout.flush()
 
     def _parse_station_files(self):
@@ -277,20 +291,33 @@ class HypoDDRelocator(object):
         self.log("Parsing stations...")
         self.stations = {}
         for station_file in self.station_files:
-            p = Parser(station_file)
-            # In theory it would be enough to parse Blockette 50, put faulty
-            # SEED files do not store enough information in them, so
-            # blockettes 52 need to be parsed...
-            for station in p.stations:
-                for blockette in station:
-                    if blockette.id != 52:
-                        continue
-                    station_id = "%s.%s" % (station[0].network_code,
-                                            station[0].station_call_letters)
-                    self.stations[station_id] = {
-                        "latitude": blockette.latitude,
-                        "longitude": blockette.longitude,
-                        "elevation": int(round(blockette.elevation))}
+            if stations_XSEED:
+                p = Parser(station_file)
+                # In theory it would be enough to parse Blockette 50, put faulty
+                # SEED files do not store enough information in them, so
+                # blockettes 52 need to be parsed...
+                for station in p.stations:
+                    for blockette in station:
+                        if blockette.id != 52:
+                            continue
+                        station_id = "%s.%s" % (station[0].network_code,
+                                                station[0].station_call_letters)
+                        self.stations[station_id] = {
+                            "latitude": blockette.latitude,
+                            "longitude": blockette.longitude,
+                            "elevation": int(round(blockette.elevation))}
+            else:
+                inv = read_inventory(station_file, 'STATIONXML')
+                for net in inv:
+                    for sta in net:
+                        station_id = f"{net.code}.{sta.code}"
+                        if len(station_id) > 7:
+                            station_id = f"{sta.code}"
+                        self.stations[station_id] = {
+                            "latitude": sta.latitude,
+                            "longitude": sta.longitude,
+                            "elevation": int(round(sta.elevation))}
+                        
         with open(serialized_station_file, "w") as open_file:
             json.dump(self.stations, open_file)
         self.log("Done parsing stations.")
@@ -308,9 +335,12 @@ class HypoDDRelocator(object):
             self.log("station.dat input file already exists.")
             return
         station_strings = []
-        for key, value in self.stations.iteritems():
-            station_strings.append("%s %.6f %.6f %i" % (key, value["latitude"],
-                value["longitude"], value["elevation"]))
+        if self.shift_stations:
+            self.min_elev = min([s['elevation'] for s in self.stations.values()])
+
+        for key, value in self.stations.items():
+            station_strings.append("%-7s %9.5f %10.5f %5i" % (key, value["latitude"],
+                value["longitude"], value["elevation"]-self.min_elev))
         station_string = "\n".join(station_strings)
         with open(station_dat_file, "w") as open_file:
             open_file.write(station_string)
@@ -371,7 +401,7 @@ class HypoDDRelocator(object):
                 if pick["phase"].upper() != "P" and \
                         pick["phase"].upper() != "S":
                     continue
-                string = "{station_id} {travel_time:.6f} {weight:.2f} {phase}"
+                string = "{station_id:7s} {travel_time:7.3f} {weight:5.2f} {phase}"
                 travel_time = pick["pick_time"] - event["origin_time"]
                 # Simple check to assure no negative travel times are used.
                 if travel_time < 0:
@@ -475,13 +505,15 @@ class HypoDDRelocator(object):
                         pick.time_errors.uncertainty
                 else:
                     current_pick["pick_time_error"] = None
-                current_pick["station_id"] = "%s.%s" % \
-                    (pick.waveform_id.network_code,
-                     pick.waveform_id.station_code)
+                current_pick["station_id"] = "{}.{}".format(
+                    pick.waveform_id.network_code,
+                    pick.waveform_id.station_code)
+                if len(current_pick["station_id"]) > 7:
+                    current_pick["station_id"] = pick.waveform_id.station_code
                 current_pick["phase"] = pick.phase_hint
                 # Assert that information for the station of the pick is
                 # available.
-                if not current_pick["station_id"] in self.stations.keys():
+                if not current_pick["station_id"] in list(self.stations.keys()):
                     discarded_picks += 0
                     continue
                 current_event["picks"].append(current_pick)
@@ -536,7 +568,7 @@ class HypoDDRelocator(object):
                 longs.append(event["origin_longitude"])
                 # Convert to km.
                 depths.append(event["origin_depth"] / 1000.0)
-            for _, station in self.stations.iteritems():
+            for _, station in self.stations.items():
                 lats.append(station["latitude"])
                 longs.append(station["longitude"])
                 # station elevation is in meter.
@@ -574,7 +606,7 @@ class HypoDDRelocator(object):
                     long_range = abs(event_1["origin_longitude"] -
                                      event_2["origin_longitude"]) * 111.0
                     depth_range = abs(event_1["origin_depth"] -
-                                      event_2["origin_depth"])
+                                      event_2["origin_depth"]) / 1000.0
                     distances.append(math.sqrt(lat_range ** 2 +
                                            long_range ** 2 + depth_range ** 2))
             # Get the percentile value.
@@ -603,7 +635,7 @@ class HypoDDRelocator(object):
 
     def _compile_hypodd(self):
         """
-        Compiles HypoDD and ph2dt using
+        Compiles HypoDD and ph2dt
         """
         logfile = os.path.join(self.working_dir, "compilation.log")
         self.log("Initating HypoDD compilation (logfile: %s)..." % logfile)
@@ -616,7 +648,7 @@ class HypoDDRelocator(object):
             compiler.configure(MAXEVE=len(self.events) + 30,
                                #MAXEVE0=len(self.events) + 30,
                                MAXEVE0=200,
-                               MAXDATA=100000,
+                               MAXDATA=3000000,
                                MAXDATA0=60000,
                                MAXCL=20,
                                MAXSTA=len(self.stations) + 10)
@@ -773,7 +805,7 @@ class HypoDDRelocator(object):
             with open(serialized_waveform_information_file, "r") as open_file:
                 self.waveform_information = json.load(open_file)
                 # Convert all times to UTCDateTimes.
-                for value in self.waveform_information.values():
+                for value in list(self.waveform_information.values()):
                     for item in value:
                         item["starttime"] = UTCDateTime(item["starttime"])
                         item["endtime"] = UTCDateTime(item["endtime"])
@@ -804,7 +836,7 @@ class HypoDDRelocator(object):
         pbar.finish()
         # Serialze it as a json object.
         waveform_information = copy.deepcopy(self.waveform_information)
-        for value in waveform_information.values():
+        for value in list(waveform_information.values()):
             for item in value:
                 item["starttime"] = str(item["starttime"])
                 item["endtime"] = str(item["endtime"])
@@ -831,7 +863,7 @@ class HypoDDRelocator(object):
         if purge:
             self.cc_results = cc_
         else:
-            for id1, items in cc_.iteritems():
+            for id1, items in cc_.items():
                 self.cc_results.setdefault(id1, {}).update(items)
         self.log("Successfully loaded cross correlation results from file: "
                  "%s." % filename)
@@ -865,7 +897,7 @@ class HypoDDRelocator(object):
                     continue
                 # Remove leading hashtag.
                 line = line[1:]
-                event_id_1, event_id_2 = map(int, line.split())
+                event_id_1, event_id_2 = list(map(int, line.split()))
                 event_id_pairs.append((event_id_1, event_id_2))
         # Now for every event pair, calculate cross correlated differential
         # travel times for every pick.
@@ -980,11 +1012,15 @@ class HypoDDRelocator(object):
                             "cc_s_phase_weighting"]
                     all_cross_correlations = []
                     # Loop over all picks and weight them.
-                    for channel, channel_weight in pick_weight_dict.iteritems():
+                    for channel, channel_weight in pick_weight_dict.items():
                         if channel_weight == 0.0:
                             continue
                         # Filter the files to obtain the correct trace.
-                        network, station = station_id.split(".")
+                        if '.' in station_id:
+                            network, station = station_id.split(".")
+                        else:
+                            network='*'
+                            station=station_id
                         st_1 = stream_1.select(network=network, station=station,
                                                channel="*%s" % channel)
                         st_2 = stream_2.select(network=network, station=station,
@@ -1014,25 +1050,27 @@ class HypoDDRelocator(object):
                         st_2.merge(-1)
 
                         if len(st_1) > 1:
-                            msg = "More than one matching trace found for {pick}"
-                            self.log(msg.format(pick=str(pick_1)), level="warning")
+                            msg = "More than one {channel} matching trace found for {str(pick_1)}"
+                            self.log(msg, level="warning")
                             self.cc_results.setdefault(pick_1['id'], {})[pick_2['id']] = msg
                             continue
                         elif len(st_1) == 0:
-                            msg = "No matching trace found for {pick}"
-                            self.log(msg.format(pick=str(pick_1)), level="warning")
+                            msg = f"No matching {channel} trace found for {str(pick_1)}"
+                            if not self.supress_warnings['no_matching_trace']:
+                                self.log(msg, level="warning")
                             self.cc_results.setdefault(pick_1['id'], {})[pick_2['id']] = msg
                             continue
                         trace_1 = st_1[0]
 
                         if len(st_2) > 1:
-                            msg = "More than one matching trace found for {pick}"
-                            self.log(msg.format(pick=str(pick_1)), level="warning")
+                            msg = "More than one matching {channel} trace found for{str(pick_2)}"
+                            self.log(msg, level="warning")
                             self.cc_results.setdefault(pick_1['id'], {})[pick_2['id']] = msg
                             continue
                         elif len(st_2) == 0:
-                            msg = "No matching trace found for {pick}"
-                            self.log(msg.format(pick=str(pick_1)), level="warning")
+                            msg = f"No matching {channel} trace found for {channel}  {str(pick_2)}"
+                            if not self.supress_warnings['no_matching_trace']:
+                                self.log(msg, level="warning")
                             self.cc_results.setdefault(pick_1['id'], {})[pick_2['id']] = msg
                             continue
                         trace_2 = st_2[0]
@@ -1070,11 +1108,13 @@ class HypoDDRelocator(object):
                                             "freqmax":
                                             self.cc_param["cc_filter_max_freq"]},
                                         plot=False)
-                            except Exception, err:
+                            except Exception as err:
                                 # XXX: Maybe maxlag is too short?
-                                if not err.message.startswith("Less than 3"):
+                                # if not err.message.startswith("Less than 3"):
+                                if not str(err).startswith("Less than 3"):
                                     msg = "Error during cross correlating: "
-                                    msg += err.message
+                                    msg += str(err)
+                                    # msg += err.message
                                     self.log(msg, level="error")
                                     self.cc_results.setdefault(pick_1['id'], {})[pick_2['id']] = msg
                                     continue
@@ -1137,8 +1177,11 @@ class HypoDDRelocator(object):
         """
         endtime = starttime + duration
         # Find all possible keys for the station_id.
-        id_pattern = "{station_id}.*.*[E,N,Z]".format(station_id=station_id)
-        station_keys = [_i for _i in self.waveform_information.keys()
+        if '.' in station_id:
+            id_pattern = f"{station_id}.*.*[E,N,Z,1,2,3]"
+        else:
+            id_pattern = f"*.{station_id}.*.*[E,N,Z,1,2,3]"
+        station_keys = [_i for _i in list(self.waveform_information.keys())
                         if fnmatch.fnmatch(_i, id_pattern)]
         filenames = []
         for key in station_keys:
@@ -1243,6 +1286,9 @@ class HypoDDRelocator(object):
                 raise HypoDDException(msg)
             ratio = float(kwargs.get("vp_vs_ratio"))
             layers = kwargs.get("layer_tops")
+            if len(layers) > 30:
+                msg = "Model must have <= 30 layers"
+                raise HypoDDException(msg)
             depths = [str(_i[0]) for _i in layers]
             velocities = [str(_i[1]) for _i in layers]
             # Use imod 5 which allows for negative station elevations by using
@@ -1298,10 +1344,11 @@ class HypoDDRelocator(object):
                 event_id = self.event_map[int(event_id)]
                 cluster_id = int(cluster_id)
                 res_id = ResourceIdentifier(event_id)
-                lat, lon, depth = map(float, [lat, lon, depth])
+                lat, lon, depth = list(map(float, [lat, lon, depth]))
                 # Convert back to meters.
                 depth *= 1000.0
-                event = res_id.getReferredObject()
+                # event = res_id.getReferredObject()
+                event = res_id.get_referred_object()
                 # Create new origin.
                 new_origin = Origin()
                 sec = int(float(second))
@@ -1328,7 +1375,7 @@ class HypoDDRelocator(object):
 
         self.log("Finished! Final output file: %s" % self.output_event_file)
 
-    def _create_plots(self):
+    def _create_plots(self, marker_size=2):
         """
         Creates some plots of the relocated event Catalog.
         """
@@ -1395,7 +1442,7 @@ class HypoDDRelocator(object):
 
         # Plot the original event location.
         plt.subplot(221)
-        plt.scatter(original_latitudes, original_depths, c=colors)
+        plt.scatter(original_latitudes, original_depths, s=marker_size**2, c=colors)
         plt.xlabel("Latitude")
         plt.ylabel("Depth in km")
         # Invert the depth axis.
@@ -1403,7 +1450,7 @@ class HypoDDRelocator(object):
         plot1_xlim = plt.xlim()
         plot1_ylim = plt.ylim()
         plt.subplot(222)
-        plt.scatter(original_longitudes, original_depths, c=colors)
+        plt.scatter(original_longitudes, original_depths, s=marker_size**2, c=colors)
         plt.xlabel("Longitude")
         plt.ylabel("Depth in km")
         plt.ylim(plt.ylim()[::-1])
@@ -1411,7 +1458,7 @@ class HypoDDRelocator(object):
         plot2_xlim = plt.xlim()
         plot2_ylim = plt.ylim()
         plt.subplot(212)
-        plt.scatter(original_longitudes, original_latitudes, c=colors)
+        plt.scatter(original_longitudes, original_latitudes, s=marker_size**2, c=colors)
         plt.xlabel("Longitude")
         plt.ylabel("Latitude")
         plot3_xlim = plt.xlim()
@@ -1422,19 +1469,19 @@ class HypoDDRelocator(object):
         # Plot the relocated event locations.
         plt.clf()
         plt.subplot(221)
-        plt.scatter(relocated_latitudes, relocated_depths, c=colors)
+        plt.scatter(relocated_latitudes, relocated_depths, s=marker_size**2, c=colors)
         plt.xlabel("Latitude")
         plt.ylabel("Depth in km")
         plt.xlim(plot1_xlim)
         plt.ylim(plot1_ylim)
         plt.subplot(222)
-        plt.scatter(relocated_longitudes, relocated_depths, c=colors)
+        plt.scatter(relocated_longitudes, relocated_depths, s=marker_size**2, c=colors)
         plt.xlabel("Longitude")
         plt.ylabel("Depth in km")
         plt.xlim(plot2_xlim)
         plt.ylim(plot2_ylim)
         plt.subplot(212)
-        plt.scatter(relocated_longitudes, relocated_latitudes, c=colors)
+        plt.scatter(relocated_longitudes, relocated_latitudes, s=marker_size**2, c=colors)
         plt.xlabel("Longitude")
         plt.ylabel("Latitude")
         plt.xlim(plot3_xlim)

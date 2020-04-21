@@ -14,7 +14,8 @@ If all three files are present and the hypoDD.inc that would be used for a new
 compilation is identical to the one already present nothing will happen as the
 end result would be the same.
 """
-import md5
+# import md5
+import hashlib
 import os
 import shutil
 import subprocess
@@ -27,8 +28,10 @@ HYPODD_ARCHIVE = os.path.abspath(os.path.join(os.path.dirname(__file__), 'src',
 
 # Note this Hash is from the tar.gz file you got, either change this to your
 # correct one using the function call md5.md5(open_file.read()).hexdigest()
-# or simply comment out the line: if md5_hash != HYPODD_MD5_HASH:    
-HYPODD_MD5_HASH = "ac7fb5829abef23aa91f1f8a115e2b45"
+# or simply comment out the line: if md5_hash != HYPODD_MD5_HASH: 
+# WCC added the hash pour his version and changed test from "!=" to "not in"   
+HYPODD_MD5_HASHES = ["ac7fb5829abef23aa91f1f8a115e2b45",
+                     "94228305b2370c4f3371fc6cb76f92c5"]
 
 
 class HypoDDCompilationError(Exception):
@@ -78,10 +81,10 @@ class HypoDDCompiler(object):
             raise HypoDDCompilationError(msg)
         # Check if the file is correct.
         with open(HYPODD_ARCHIVE, "rb") as open_file:
-            md5_hash = md5.md5(open_file.read()).hexdigest()
-        if md5_hash != HYPODD_MD5_HASH:
-            msg = "md5 hash of the HypoDD archive is not correct"
-            raise HypoDDCompilationError(msg)
+            md5_hash = hashlib.md5(open_file.read()).hexdigest()
+        # if md5_hash not in HYPODD_MD5_HASHES:
+        #     msg = "md5 hash of the HypoDD archive is not correct"
+        #     raise HypoDDCompilationError(msg)
 
     def determine_paths(self):
         self.paths = {}
@@ -275,7 +278,7 @@ class HypoDDCompiler(object):
         self.log("Compiling HypoDD ...")
         sub = subprocess.Popen(
             "make", cwd=self.paths["make_directory"], stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT)
+            stderr=subprocess.STDOUT, universal_newlines=True)
         self.log(sub.stdout.read())
         retcode = sub.wait()
         if retcode != 0:
