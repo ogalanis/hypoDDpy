@@ -20,11 +20,11 @@ If yes, consider citing this software! Just click on this button here to get all
 
 ### Requirements
 
-* Python 2.6 or 2.7
+* Python 3.6+
 * NumPy
 * matplotlib
 * progressbar
-* [ObsPy](http://obspy.org) (Tested on 1.0.2)
+* [ObsPy](http://obspy.org) (Tested on 1.2.0)
 
 ### Installation
 hypoDDpy currently works with HypoDD 2.1b which you will have to acquire
