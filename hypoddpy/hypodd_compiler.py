@@ -23,15 +23,18 @@ import tarfile
 
 
 # Specify the HypoDD version to be compiled.
-HYPODD_ARCHIVE = os.path.abspath(os.path.join(os.path.dirname(__file__), 'src',
-    'HYPODD_2.1b.tar.gz'))
+HYPODD_ARCHIVE = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "src", "HYPODD_2.1b.tar.gz")
+)
 
 # Note this Hash is from the tar.gz file you got, either change this to your
 # correct one using the function call md5.md5(open_file.read()).hexdigest()
-# or simply comment out the line: if md5_hash != HYPODD_MD5_HASH: 
-# WCC added the hash pour his version and changed test from "!=" to "not in"   
-HYPODD_MD5_HASHES = ["ac7fb5829abef23aa91f1f8a115e2b45",
-                     "94228305b2370c4f3371fc6cb76f92c5"]
+# or simply comment out the line: if md5_hash != HYPODD_MD5_HASH:
+# WCC added the hash pour his version and changed test from "!=" to "not in"
+HYPODD_MD5_HASHES = [
+    "ac7fb5829abef23aa91f1f8a115e2b45",
+    "94228305b2370c4f3371fc6cb76f92c5",
+]
 
 
 class HypoDDCompilationError(Exception):
@@ -39,6 +42,7 @@ class HypoDDCompilationError(Exception):
     Exception that will be raised if anything during the compilation does not
     occur as planned.
     """
+
     pass
 
 
@@ -53,6 +57,7 @@ class HypoDDCompiler(object):
     >>> hyp_comp.configure()
     >>> hyp_comp.make()
     """
+
     def __init__(self, working_dir, log_function):
         """
         :param working_dir: The working directory. Everything will happen in
@@ -93,34 +98,51 @@ class HypoDDCompiler(object):
         if not os.path.exists(self.paths["binary_dir"]):
             os.makedirs(self.paths["binary_dir"])
         # Output files.
-        self.paths["hypoDD_binary"] = os.path.join(self.paths["binary_dir"],
-            "hypoDD")
-        self.paths["ph2dt_binary"] = os.path.join(self.paths["binary_dir"],
-            "ph2dt")
+        self.paths["hypoDD_binary"] = os.path.join(
+            self.paths["binary_dir"], "hypoDD"
+        )
+        self.paths["ph2dt_binary"] = os.path.join(
+            self.paths["binary_dir"], "ph2dt"
+        )
         # The hypoDD.inc files produced by any potential previous runs. After
         # the run, the currently used hypoDD.inc file will be copied there.
-        self.paths["old hypoDD.inc file"] = \
-            os.path.join(self.paths["binary_dir"], "hypoDD.inc")
+        self.paths["old hypoDD.inc file"] = os.path.join(
+            self.paths["binary_dir"], "hypoDD.inc"
+        )
         # Where to unpack the archive.
-        self.paths["hypodd_unpack_dir"] = os.path.join(self.working_dir,
-            "hypodd_src")
+        self.paths["hypodd_unpack_dir"] = os.path.join(
+            self.working_dir, "hypodd_src"
+        )
         # Some paths in the unpacked archive.
         self.paths["make_directory"] = os.path.join(
-            self.paths["hypodd_unpack_dir"], "HYPODD", "src")
+            self.paths["hypodd_unpack_dir"], "HYPODD", "src"
+        )
         # The resulting binaries directly after the compilation.
         self.paths["compiled_hypodd_binary"] = os.path.join(
-            self.paths["make_directory"], "hypoDD", "hypoDD")
+            self.paths["make_directory"], "hypoDD", "hypoDD"
+        )
         self.paths["compiled_ph2dt_binary"] = os.path.join(
-            self.paths["make_directory"], "ph2dt", "ph2dt")
+            self.paths["make_directory"], "ph2dt", "ph2dt"
+        )
         # The include directory.
         self.paths["include_dir"] = os.path.join(
-            self.paths["hypodd_unpack_dir"], "HYPODD", "include")
+            self.paths["hypodd_unpack_dir"], "HYPODD", "include"
+        )
         # The hypoDD.inc file
-        self.paths["hypoDD.inc"] = os.path.join(self.paths["include_dir"],
-            "hypoDD.inc")
+        self.paths["hypoDD.inc"] = os.path.join(
+            self.paths["include_dir"], "hypoDD.inc"
+        )
 
-    def configure(self, MAXEVE=3000, MAXDATA=2800000, MAXEVE0=50,
-        MAXDATA0=60000, MAXLAY=30, MAXSTA=2000, MAXCL=200):
+    def configure(
+        self,
+        MAXEVE=3000,
+        MAXDATA=2800000,
+        MAXEVE0=50,
+        MAXDATA0=60000,
+        MAXLAY=30,
+        MAXSTA=2000,
+        MAXCL=200,
+    ):
         """
         Configure the compilation.
 
@@ -157,7 +179,8 @@ class HypoDDCompiler(object):
             "MAXDATA0": MAXDATA0,
             "MAXLAY": MAXLAY,
             "MAXSTA": MAXSTA,
-            "MAXCL": MAXCL}
+            "MAXCL": MAXCL,
+        }
 
         self.is_configured = True
 
@@ -240,7 +263,8 @@ class HypoDDCompiler(object):
             MAXDATA0=self.hypodd_inc_config["MAXDATA0"],
             MAXLAY=self.hypodd_inc_config["MAXLAY"],
             MAXSTA=self.hypodd_inc_config["MAXSTA"],
-            MAXCL=self.hypodd_inc_config["MAXCL"])
+            MAXCL=self.hypodd_inc_config["MAXCL"],
+        )
         # Remove the leading empty line.
         hypoDD_inc = hypoDD_inc[1:]
         return hypoDD_inc
@@ -254,10 +278,12 @@ class HypoDDCompiler(object):
         if not os.path.exists(self.paths["binary_dir"]):
             return False
         # If the three file do not exist return False.
-        if not os.path.exists(self.paths["hypoDD_binary"]) or \
-            not os.path.exists(self.paths["ph2dt_binary"]) or \
-            not os.path.exists(self.paths["old hypoDD.inc file"]):
-                return False
+        if (
+            not os.path.exists(self.paths["hypoDD_binary"])
+            or not os.path.exists(self.paths["ph2dt_binary"])
+            or not os.path.exists(self.paths["old hypoDD.inc file"])
+        ):
+            return False
         # Check if the newly created hypoDD.inc file is identical to the old
         # one.
         with open(self.paths["old hypoDD.inc file"], "r") as open_file:
@@ -277,23 +303,31 @@ class HypoDDCompiler(object):
         # Compile it.
         self.log("Compiling HypoDD ...")
         sub = subprocess.Popen(
-            "make", cwd=self.paths["make_directory"], stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, universal_newlines=True)
+            "make",
+            cwd=self.paths["make_directory"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            universal_newlines=True,
+        )
         self.log(sub.stdout.read())
         retcode = sub.wait()
         if retcode != 0:
             msg = "Problem compiling HypoDD."
             raise HypoDDCompilationError(msg)
         # Check if the output files have been created.
-        if not os.path.exists(self.paths["compiled_hypodd_binary"]) or \
-           not os.path.exists(self.paths["compiled_ph2dt_binary"]):
+        if not os.path.exists(
+            self.paths["compiled_hypodd_binary"]
+        ) or not os.path.exists(self.paths["compiled_ph2dt_binary"]):
             msg = "The binary output files could not be found."
             raise HypoDDCompilationError(msg)
         # Move the binary files and the hypoDD.inc file.
-        shutil.move(self.paths["compiled_hypodd_binary"],
-            self.paths["hypoDD_binary"])
-        shutil.move(self.paths["compiled_ph2dt_binary"],
-            self.paths["ph2dt_binary"])
-        shutil.move(self.paths["hypoDD.inc"],
-            self.paths["old hypoDD.inc file"])
+        shutil.move(
+            self.paths["compiled_hypodd_binary"], self.paths["hypoDD_binary"]
+        )
+        shutil.move(
+            self.paths["compiled_ph2dt_binary"], self.paths["ph2dt_binary"]
+        )
+        shutil.move(
+            self.paths["hypoDD.inc"], self.paths["old hypoDD.inc file"]
+        )
         self.log("Compiling HypoDD done.")

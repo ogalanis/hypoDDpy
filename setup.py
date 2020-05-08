@@ -31,13 +31,13 @@ import os
 LOCAL_PATH = os.path.abspath(os.path.dirname(__file__))
 DOCSTRING = __doc__.split("\n")
 
-NAME = 'hypoddpy'
-AUTHOR = 'Lion Krischer'
-AUTHOR_EMAIL = 'krischer@geophysik.uni-muenchen.de'
-URL = 'None so far...'
-LICENSE = 'GNU General Public License, version 3 (GPLv3)'
-KEYWORDS = ['seismology', 'earthquakes', 'relocation']
-INSTALL_REQUIRES = ['obspy', 'progressbar']
+NAME = "hypoddpy"
+AUTHOR = "Lion Krischer"
+AUTHOR_EMAIL = "krischer@geophysik.uni-muenchen.de"
+URL = "None so far..."
+LICENSE = "GNU General Public License, version 3 (GPLv3)"
+KEYWORDS = ["seismology", "earthquakes", "relocation"]
+INSTALL_REQUIRES = ["obspy", "progressbar"]
 ENTRY_POINTS = {}
 
 
@@ -45,7 +45,7 @@ def getVersion():
     """
     Get the current version of the module.
     """
-    version_file = os.path.join(LOCAL_PATH, 'hypoddpy', 'VERSION.txt')
+    version_file = os.path.join(LOCAL_PATH, "hypoddpy", "VERSION.txt")
     with open(version_file) as f:
         version = f.read().strip()
     return version
@@ -62,15 +62,15 @@ def setupPackage():
         author=AUTHOR,
         author_email=AUTHOR_EMAIL,
         license=LICENSE,
-        platforms='OS Independent',
+        platforms="OS Independent",
         keywords=KEYWORDS,
-        packages=['hypoddpy'],
-        package_dir={'hypoddpy': 'hypoddpy'},
+        packages=["hypoddpy"],
+        package_dir={"hypoddpy": "hypoddpy"},
         zip_safe=False,
         install_requires=INSTALL_REQUIRES,
         entry_points=ENTRY_POINTS,
     )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     setupPackage()
