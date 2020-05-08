@@ -1,8 +1,12 @@
 # hypoDDpy
 
+---
+
 **This is largely unmaintained and I personally have not been using it for many
-year. But people keep using it and I am happy to accept pull requests. If
+years. But people keep using it and I am happy to accept pull requests. If
 anyone wants to take over maintenance please send me an email!**
+
+---
 
 This a collection of tools to run
 [HypoDD](http://www.ldeo.columbia.edu/~felixw/hypoDD.html) by Felix Waldhauser.
