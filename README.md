@@ -1,5 +1,9 @@
 # hypoDDpy
 
+**This is largely unmaintained and I personally have not been using it for many
+year. But people keep using it and I am happy to accept pull requests. If
+anyone wants to take over maintenance please send me an email!**
+
 This a collection of tools to run
 [HypoDD](http://www.ldeo.columbia.edu/~felixw/hypoDD.html) by Felix Waldhauser.
 
@@ -16,6 +20,17 @@ Origin node. The events that could not be relocated will not be changed.
 If yes, consider citing this software! Just click on this button here to get all the required information:
 
 [![DOI](https://zenodo.org/badge/doi/10.5281/zenodo.18907.svg)](http://dx.doi.org/10.5281/zenodo.18907)
+
+
+### Possible Improvements
+
+* Deal with stations below sea level:
+    - Adjust events up and down before/after `hypoDD` ran to correspond to station shift.
+    - Adjust model up to correspond to station shift.
+* Make `hypoDD_relocator` more configurable:
+    - All parameters in `ph2dt.inp`
+    - All parameters in `hypoDD.inp`
+    - All adjustments to `hypoDD.inc` (parameters for compilation)
 
 
 ### Requirements
