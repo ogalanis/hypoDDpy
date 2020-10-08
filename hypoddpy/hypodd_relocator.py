@@ -1523,7 +1523,17 @@ class HypoDDRelocator(object):
         :param layer_tops: List of (depth_of_top_of_layer, layer_velocity_km_s)
            e.g. to define five layers:
             [(0.0, 3.77), (1.0, 4.64), (3.0, 5.34), (6.0, 5.75), (14.0, 6.0)]
-
+            
+        * layered_variable_vp_vs_ratio (IMOD 1 in hypodd2.1)
+        
+        :param layer_tops: List of (depth_of_top_of_layer, layer_velocity_km_s,
+        layer_ratios)
+            e.g. to define five layers:
+            [(-3.0, 3.42, 2.38), 
+             (0.5, 4.6, 1.75), 
+             (1.0, 5.42, 1.74), 
+             (1.5, 5.52, 1.75),
+             (2.13, 5.67, 1.77)]
         """
         if model_type == "layered_p_velocity_with_constant_vp_vs_ratio":
             # Check the kwargs.
@@ -1557,6 +1567,37 @@ class HypoDDRelocator(object):
             # " ".join(depths),
             ## P wave velocity of layers.
             # " ".join(velocities)]
+            self.forward_model_string = "\n".join(forward_model)
+            
+        elif model_type == "layered_variable_vp_vs_ratio":
+            """
+            *--- 1D model, variable  vp/vs ratio:
+            * TOP:          depths of top of layer (km)
+            * VEL:          layer velocities (km/s) end w/ -9
+            * RATIO:        layer ratios  end w/ -9
+            * IMOD: 1
+            """
+            if not "layer_tops" in kwargs:
+                msg = "layer_tops need to be defined"
+                raise HypoDDException(msg)
+            layers = kwargs.get("layer_tops")
+            if len(layers) > 30:
+                msg = "Model must have <= 30 layers"
+                raise HypoDDException(msg)
+            depths = [str(_i[0]) for _i in layers]
+            velocities = [str(_i[1]) for _i in layers]
+            ratios = [str(_i[2]) for _i in layers]
+            depths.append('-9')
+            velocities.append('-9')
+            ratios.append('-9')
+            # Use imod 5 which allows for negative station elevations by using
+            # straight rays.
+            forward_model = [
+                "1",  # IMOD
+                " ".join(depths),
+                " ".join(velocities),
+                " ".join(velocities)
+            ]
             self.forward_model_string = "\n".join(forward_model)
         else:
             msg = "Model type {model_type} unknown."
