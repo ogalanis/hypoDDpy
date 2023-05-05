@@ -1382,10 +1382,11 @@ class HypoDDRelocator(object):
                     continue
                 # Otherwise calculate the corrected differential travel time.
                 diff_travel_time = (
-                    pick_2["pick_time"]
+                    (pick_1["pick_time"]
+                    - event_1_dict["origin_time"]) -
+                    (pick_2["pick_time"]
                     + pick2_corr
-                    - event_2_dict["origin_time"]
-                ) - (pick_1["pick_time"] - event_1_dict["origin_time"])
+                    - event_2_dict["origin_time"]))
                 string = "{station_id} {travel_time:.6f} {weight:.4f} {phase}"
                 string = string.format(
                     station_id=pick_1["station_id"],
