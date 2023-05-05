@@ -12,6 +12,7 @@ from obspy.core.event import (
     Origin,
     read_events,
     ResourceIdentifier,
+    Magnitude,
 )
 from obspy.signal.cross_correlation import xcorr_pick_correction
 from obspy.io.xseed import Parser
@@ -529,7 +530,10 @@ class HypoDDRelocator(object):
             self.events.append(current_event)
             current_event["event_id"] = str(event.resource_id)
             # Take the value from the first event.
-            current_event["magnitude"] = event.magnitudes[0].mag
+            if event.preferred_magnitude() is not None:
+                current_event["magnitude"] = event.preferred_magnitude().mag
+            else:
+                current_event["magnitude"] = 0.0
             # Always take the first origin.
             origin = event.origins[0]
             current_event["origin_time"] = origin.time
@@ -1750,7 +1754,11 @@ class HypoDDRelocator(object):
             relocated_latitudes.append(event.origins[-1].latitude)
             relocated_longitudes.append(event.origins[-1].longitude)
             relocated_depths.append(event.origins[-1].depth / 1000.0)
-            magnitudes.append(event.magnitudes[0])
+            if event.preferred_magnitude() is not None:
+                magnitudes.append(event.preferred_magnitude())
+            else:
+                magnitudes.append(Magnitude(mag=0.0))
+
             # Use color to Code the different events. Colorcode by event
             # cluster or indicate if an event did not get relocated.
             if (
