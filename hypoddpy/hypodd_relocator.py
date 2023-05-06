@@ -1746,14 +1746,27 @@ class HypoDDRelocator(object):
         magnitudes = []
 
         for event in catalog:
-            # The first event is always the original one.
-            original_latitudes.append(event.origins[0].latitude)
-            original_longitudes.append(event.origins[0].longitude)
-            original_depths.append(event.origins[0].depth / 1000.0)
-            # The last one can either be a relocated one or an original one.
-            relocated_latitudes.append(event.origins[-1].latitude)
-            relocated_longitudes.append(event.origins[-1].longitude)
-            relocated_depths.append(event.origins[-1].depth / 1000.0)
+            # If the last origin was not created by hypoDD then both the
+            # original and the relocated origin is the origin designated
+            # as preferred.
+            if (
+                event.origins[-1].method_id is None
+                or "HYPODD" not in str(event.origins[-1].method_id).upper()
+            ):
+                original_origin = event.preferred_origin()
+                relocated_origin = event.preferred_origin()
+            # If the last origin was created by hypoDD then the original
+            # origin is the origin designated as preferred, and the
+            # relocated origin is the last origin.
+            else:
+                original_origin = event.preferred_origin()
+                relocated_origin = event.origins[-1]
+            original_latitudes.append(original_origin.latitude)
+            original_longitudes.append(original_origin.longitude)
+            original_depths.append(original_origin.depth / 1000.0)
+            relocated_latitudes.append(relocated_origin.latitude)
+            relocated_longitudes.append(relocated_origin.longitude)
+            relocated_depths.append(relocated_origin.depth / 1000.0)
             if event.preferred_magnitude() is not None:
                 magnitudes.append(event.preferred_magnitude())
             else:
@@ -1762,13 +1775,13 @@ class HypoDDRelocator(object):
             # Use color to Code the different events. Colorcode by event
             # cluster or indicate if an event did not get relocated.
             if (
-                event.origins[-1].method_id is None
-                or "HYPODD" not in str(event.origins[-1].method_id).upper()
+                relocated_origin.method_id is None
+                or "HYPODD" not in str(relocated_origin.method_id).upper()
             ):
                 colors.append(color_invalid)
             # Otherwise get the cluster id, stored in the comments.
             else:
-                for comment in event.origins[-1].comments:
+                for comment in relocated_origin.comments:
                     comment = comment.text
                     if comment and "HypoDD cluster id" in comment:
                         cluster_id = int(comment.split(":")[-1])
