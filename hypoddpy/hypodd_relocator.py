@@ -1601,7 +1601,7 @@ class HypoDDRelocator(object):
                 "1",  # IMOD
                 " ".join(depths),
                 " ".join(velocities),
-                " ".join(velocities)
+                " ".join(ratios)
             ]
             self.forward_model_string = "\n".join(forward_model)
         else:
